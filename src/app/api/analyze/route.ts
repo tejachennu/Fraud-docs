@@ -1,8 +1,10 @@
+import { detectAiGeneration } from "@/lib/aiDetector";
 import { analyzeWithGemini } from "@/lib/gemini";
 import { extractMetadata } from "@/lib/metadata";
-import type { AnalysisResult } from "@/lib/types";
+import type { AiDetection, AnalysisResult, GeminiReport, Verdict } from "@/lib/types";
 
-export const maxDuration = 60;
+// The detector uses a slower reasoning model; both calls run in parallel.
+export const maxDuration = 120;
 
 // Gemini accepts inline requests up to ~20MB including the base64 overhead.
 const MAX_BYTES = 14 * 1024 * 1024;
@@ -42,17 +44,46 @@ export async function POST(request: Request) {
 
   try {
     const metadata = await extractMetadata(bytes, file.name, file.type);
-    const report = await analyzeWithGemini(bytes, file.type, metadata);
+    const [report, aiDetection] = await Promise.all([
+      analyzeWithGemini(bytes, file.type, metadata),
+      detectAiGeneration(bytes, file.type, metadata),
+    ]);
     const result: AnalysisResult = {
       analyzedAt: new Date().toISOString(),
       metadata,
-      report,
+      report: mergeAiDetection(report, aiDetection),
+      aiDetection,
     };
     return Response.json(result);
   } catch (err) {
     console.error("Document analysis failed:", err);
     return Response.json({ error: describeError(err) }, { status: 502 });
   }
+}
+
+function verdictFor(risk: number): Verdict {
+  if (risk >= 70) return "likely_fraudulent";
+  if (risk >= 30) return "suspicious";
+  return "likely_authentic";
+}
+
+/** An AI-generated medical document is fraudulent, so the AI score lifts the overall risk. */
+function mergeAiDetection(report: GeminiReport, ai: AiDetection): GeminiReport {
+  const aiScore = Math.max(ai.score, report.aiGeneratedLikelihood);
+  const riskScore = Math.max(report.riskScore, aiScore);
+  const raised = aiScore > report.aiGeneratedLikelihood + 15 || riskScore > report.riskScore + 15;
+  const verdict =
+    report.verdict === "inconclusive" && aiScore < 70 ? "inconclusive" : verdictFor(riskScore);
+  return {
+    ...report,
+    aiGeneratedLikelihood: aiScore,
+    riskScore,
+    verdict,
+    summary:
+      raised && ai.rationale
+        ? `${report.summary} AI-generation check: ${ai.rationale}`
+        : report.summary,
+  };
 }
 
 /** SDK errors carry the raw JSON response body as their message. */

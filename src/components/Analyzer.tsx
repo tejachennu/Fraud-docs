@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type SVGProps } from "react";
-import type { AnalysisResult, Finding, FindingCategory, Severity, Verdict } from "@/lib/types";
+import type { AiDetection, AiIndicator, AnalysisResult, Finding, FindingCategory, Severity, Verdict } from "@/lib/types";
 import {
   AlertOctagonIcon,
   AlertTriangleIcon,
@@ -62,8 +62,9 @@ const CATEGORY: Record<FindingCategory, { label: string; Icon: IconType }> = {
 
 const STEPS = [
   "Uploading document",
-  "Inspecting file metadata",
-  "Reviewing content for forgery & AI artifacts",
+  "Inspecting metadata & content credentials",
+  "Reviewing content for forgery & tampering",
+  "Running AI-generation detector",
   "Compiling report",
 ];
 
@@ -99,7 +100,7 @@ export default function Analyzer() {
   // Advance the progress steps while waiting; the last step holds until the response arrives.
   useEffect(() => {
     if (!loading) return;
-    const timers = [900, 2200, 7000].map((ms, i) => setTimeout(() => setStep(i + 1), ms));
+    const timers = [900, 2200, 6000, 14000].map((ms, i) => setTimeout(() => setStep(i + 1), ms));
     return () => timers.forEach(clearTimeout);
   }, [loading]);
 
@@ -432,6 +433,8 @@ function Report({ result, onReset }: { result: AnalysisResult; onReset: () => vo
         <Meter label="AI-generated likelihood" value={report.aiGeneratedLikelihood} />
       </div>
 
+      {result.aiDetection && <AiDetectionCard detection={result.aiDetection} />}
+
       {/* Severity tiles */}
       <div className="grid grid-cols-3 gap-3">
         {(Object.keys(SEVERITY) as Severity[]).map((sev) => {
@@ -507,6 +510,92 @@ function Report({ result, onReset }: { result: AnalysisResult; onReset: () => vo
           <KeyValueCard title="File metadata" rows={Object.entries(metadata.properties)} mono />
         )}
       </div>
+    </div>
+  );
+}
+
+const CONFIDENCE_LABEL: Record<AiIndicator["confidence"], string> = { low: "Low", medium: "Medium", high: "High" };
+
+function AiDetectionCard({ detection }: { detection: AiDetection }) {
+  const flagged = detection.indicators.filter((i) => i.present);
+  const clear = detection.indicators.filter((i) => !i.present);
+  const parts: { label: string; value: number; hint: string }[] = [
+    { label: "Provenance & metadata", value: detection.provenanceFloor, hint: "C2PA, IPTC labels, generator data, image size" },
+    { label: "Visual indicators", value: detection.indicatorScore, hint: `${flagged.length} of ${detection.indicators.length} indicators found` },
+    { label: "Detector estimate", value: detection.modelEstimate, hint: "Holistic judgement of the detector" },
+  ];
+  return (
+    <div className="rounded-2xl border border-line bg-card p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 font-semibold text-ink">
+          <SparklesIcon className="text-accent" /> AI-generation analysis
+        </h2>
+        <span className="text-xs text-muted">Final score uses the strongest signal</span>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        {parts.map((p) => {
+          const st = STATUS[scoreStatus(p.value)];
+          return (
+            <div key={p.label} className="rounded-xl border border-line p-3">
+              <p className="text-xs text-muted">{p.label}</p>
+              <p className="mt-1 flex items-center gap-2 text-xl font-semibold text-ink">
+                {p.value}
+                <span className={`h-2 w-2 rounded-full ${st.fill}`} aria-hidden="true" />
+                <span className="text-xs font-medium text-ink-2">{SCORE_LABEL[scoreStatus(p.value)]}</span>
+              </p>
+              <p className="mt-1 text-xs text-muted">{p.hint}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      {detection.error && (
+        <p className="mt-4 flex items-start gap-2 rounded-xl border border-warning/50 bg-warning/10 p-3 text-sm text-ink-2">
+          <AlertTriangleIcon className="mt-0.5 shrink-0 text-warning" /> {detection.error}
+        </p>
+      )}
+
+      {detection.rationale && <p className="mt-4 text-sm leading-6 text-ink-2">{detection.rationale}</p>}
+
+      {flagged.length > 0 && (
+        <ul className="mt-4 flex flex-col gap-2">
+          {flagged.map((ind) => (
+            <li key={ind.id} className="rounded-xl border border-line p-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="font-medium text-ink">{ind.label}</span>
+                <span className="rounded-full bg-bg px-2 py-0.5 text-ink-2">{CONFIDENCE_LABEL[ind.confidence]} confidence</span>
+              </div>
+              <p className="mt-1 text-sm text-ink-2">{ind.evidence}</p>
+              {ind.location && <p className="mt-1 text-xs text-muted">📍 {ind.location}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {clear.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs text-muted">Checked, not found</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {clear.map((ind) => (
+              <span key={ind.id} className="inline-flex items-center gap-1 rounded-full bg-bg px-2 py-0.5 text-xs text-ink-2">
+                <CheckCircleIcon className="text-good" /> {ind.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {detection.authenticitySignals.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs text-muted">Signs of a genuine document</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-ink-2">
+            {detection.authenticitySignals.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

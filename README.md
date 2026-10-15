@@ -22,6 +22,18 @@ Each upload goes through two layers:
    - Medical implausibility: impossible lab values, wrong units or ranges, unsafe doses, invalid codes
    - Provider red flags: missing or invalid registration numbers, misspelled facility names
 
+3. **AI-generation detector** (`src/lib/aiDetector.ts` + `src/lib/provenance.ts`)
+   - Provenance: C2PA content credentials (ChatGPT/OpenAI, Adobe Firefly, Google and Microsoft embed them),
+     IPTC `trainedAlgorithmicMedia` labels, Stable Diffusion/ComfyUI prompt parameters in PNG text chunks,
+     and image sizes that match generator output (e.g. 1024×1536) when no camera data is present.
+   - A second, dedicated model pass (`gemini-2.5-pro` by default) checks a fixed list of 10 indicators:
+     garbled text, inconsistent letterforms, malformed seals and stamps, synthetic signatures, broken
+     table geometry, physically implausible photos, rendered textures, hallucinated details, repetition
+     artifacts and LLM writing style. The indicators it finds are scored in code with a noisy-OR, rather
+     than relying on the model's own number.
+   - The final AI score is the strongest of: the provenance floor, the indicator score and the detector's
+     own estimate. Because an AI-generated medical document is fraudulent, it also raises the overall risk.
+
 The UI shows a verdict (`likely_authentic` / `suspicious` / `likely_fraudulent` / `inconclusive`), a
 fraud-risk score, an AI-generated likelihood, all findings sorted by severity, the extracted key fields
 (IDs are masked) and suggested verification steps.
@@ -39,7 +51,8 @@ Open http://localhost:3000.
 | Variable         | Required | Description                                              |
 | ---------------- | -------- | -------------------------------------------------------- |
 | `GEMINI_API_KEY` | yes      | Key from https://aistudio.google.com/apikey              |
-| `GEMINI_MODEL`   | no       | Gemini model id. The default is `gemini-2.5-flash`; use a Pro model for harder cases. |
+| `GEMINI_MODEL`   | no       | Model for the main forensic review. The default is `gemini-2.5-flash`. |
+| `GEMINI_DETECTOR_MODEL` | no | Model for the AI-generation detector. The default is `gemini-2.5-pro`; it falls back to `GEMINI_MODEL`. |
 
 ## API
 
@@ -58,5 +71,8 @@ aiGeneratedLikelihood, documentType, summary, findings, extractedDetails, recomm
   by this app, but they are sent to the Gemini API. Check that your Google Cloud / AI Studio terms and data
   handling meet your HIPAA, GDPR or local requirements before you use real patient data. For regulated
   workloads, consider Vertex AI.
+- **Detection limits:** no AI-image detector is fully reliable. Screenshots, re-saves and messaging
+  apps strip provenance metadata, and the newest generators render text well. Treat low scores as
+  "no evidence found", not as proof that a document is authentic.
 - **Not proof:** the results are AI-assisted indicators that help prioritise manual review. Always confirm
   with the issuing provider before you reject a claim or take action.

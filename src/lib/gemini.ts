@@ -17,6 +17,8 @@ Examine the document for:
 1. AI generation: synthetic-looking logos/stamps/signatures, garbled or nonsensical text in small print,
    warped letters, inconsistent fonts within a line, overly generic or templated language, perfect symmetry,
    smooth "rendered" textures, physician names or addresses that look invented, LLM-style phrasing.
+   Modern image generators render clean, mostly-correct text, so a tidy document is not evidence of
+   authenticity: read fine print, stamps and numbers closely.
 2. Visual tampering: misaligned text baselines, mismatched fonts/sizes/colours/kerning in edited fields
    (names, dates, amounts, diagnoses), copy-pasted or cloned regions, inconsistent compression or background
    noise around specific fields, white-out boxes, stamps or signatures that look pasted on.
@@ -119,7 +121,7 @@ const responseSchema: Schema = {
 };
 
 let client: GoogleGenAI | null = null;
-function getClient(): GoogleGenAI {
+export function getClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not set. Add it to .env.local (see .env.example).");

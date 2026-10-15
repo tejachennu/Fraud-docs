@@ -1,4 +1,5 @@
 import exifr from "exifr";
+import { scanProvenance } from "./provenance";
 import type { Finding, MetadataReport } from "./types";
 
 // Tools whose presence in the producer/creator/software fields indicates the
@@ -219,11 +220,17 @@ export async function extractMetadata(
     sizeBytes: bytes.length,
     properties: {},
     findings: [],
+    aiSignalFloor: 0,
   };
   if (mimeType === "application/pdf") {
     analyzePdf(bytes, report);
   } else {
     await analyzeImage(bytes, report);
+  }
+  scanProvenance(bytes, report);
+  // EXIF/XMP tool names checked above are as strong as an embedded generator marker.
+  if (report.findings.some((f) => f.category === "ai_generation" && f.severity === "high")) {
+    report.aiSignalFloor = Math.max(report.aiSignalFloor, 90);
   }
   return report;
 }

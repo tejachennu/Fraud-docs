@@ -45,7 +45,6 @@ export interface GeminiReport {
 }
 
 export interface AnalysisResult {
-  model: string;
   analyzedAt: string;
   metadata: MetadataReport;
   report: GeminiReport;

@@ -169,7 +169,7 @@ Return your assessment as JSON matching the schema.`,
   const text = response.text;
   if (!text) {
     const reason = response.promptFeedback?.blockReason ?? response.candidates?.[0]?.finishReason;
-    throw new Error(`Gemini returned no content${reason ? ` (${reason})` : ""}.`);
+    throw new Error(`The analysis service returned no content${reason ? ` (${reason})` : ""}.`);
   }
 
   const report = JSON.parse(text) as GeminiReport;

@@ -1,4 +1,4 @@
-import { analyzeWithGemini, getModelName } from "@/lib/gemini";
+import { analyzeWithGemini } from "@/lib/gemini";
 import { extractMetadata } from "@/lib/metadata";
 import type { AnalysisResult } from "@/lib/types";
 
@@ -44,7 +44,6 @@ export async function POST(request: Request) {
     const metadata = await extractMetadata(bytes, file.name, file.type);
     const report = await analyzeWithGemini(bytes, file.type, metadata);
     const result: AnalysisResult = {
-      model: getModelName(),
       analyzedAt: new Date().toISOString(),
       metadata,
       report,
@@ -56,12 +55,12 @@ export async function POST(request: Request) {
   }
 }
 
-/** Gemini SDK errors carry the raw JSON response body as their message. */
+/** SDK errors carry the raw JSON response body as their message. */
 function describeError(err: unknown): string {
   if (!(err instanceof Error)) return "Analysis failed.";
   try {
     const parsed = JSON.parse(err.message);
-    return `Gemini API error: ${parsed?.error?.message ?? err.message}`;
+    return `Analysis service error: ${parsed?.error?.message ?? err.message}`;
   } catch {
     return err.message;
   }
